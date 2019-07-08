@@ -4,10 +4,11 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 
+require('./server/db');
+
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 
-const db = require('./server/db');
 
 var app = express();
 
