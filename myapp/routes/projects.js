@@ -1,14 +1,17 @@
 var express = require("express");
 var router = express.Router();
-
 const mongoose = require('mongoose');
 const { ObjectId } = mongoose.Types;
 
+
+var { removeEmpty } = require('../server/utils');
+var { isLoggedIn } = require('../server/middlewares');
+
 var Project = require('../server/models/project');
-// var Project = mongoose.model('Project');
+var statusesRouter = require('./statuses');
 
 /* Get all projects */
-router.get('/', function (req, res, next) {
+router.get('/', isLoggedIn, function (req, res, next) {
     Project.find({}, (err, projects) => {
         res.send({
             count: projects.length,
@@ -18,34 +21,63 @@ router.get('/', function (req, res, next) {
 });
 
 /* Edit project */
-router.put('/:projectId', (req, res) => {
+router.put('/:projectId', isLoggedIn, (req, res) => {
     Project.findById(req.params.projectId)
         .then(project => {
-            if(!project)
+            if (!project) {
                 return res.status(404).json({
                     message: "Project not found"
-                })
-            
-        })
-});
-
-/* Add new project */
-router.post('/', (req, res) => {
-    // verfiy user
-    User.findById(req.session.passport)
-        .then(user => {
-            if (!user)
-                return res.status(404).json({
-                    message: "User not found"
                 });
+            }
+            // prevent from updating unwanted fields
+            delete req.body.createdBy;
+            delete req.body.creationDate;
+
+            removeEmpty(req.body);
+            Object.assign(project, req.body);
+
+            return project.save();
+        })
+        .then(() => {
+            return res.status(200).send({
+                message: "Project was successfully updated"
+            });
         })
         .catch(err => {
             console.log(err);
             res.status(500).json({
-                error: err
+                message: err
             });
         });
+});
 
+/* Delete project */
+router.delete('/:projectId', isLoggedIn, (req, res) => {
+    Project.findById(req.params.projectId)
+        .then(project => {
+            if (!project)
+                return res.status(404).json({
+                    message: "Project nor foud"
+                });
+
+            project.isDeleted = true;
+            return project.save();
+        })
+        .then(() => {
+            return res.status(200).json({
+                message: "Project is deleted"
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            res.status(500).json({
+                message: err
+            });
+        });
+});
+
+/* Add new project */
+router.post('/', isLoggedIn, (req, res) => {
     Project.find({ serialNumber: req.body.serialNumber })
         .then(project => {
             if (project.length > 0)
@@ -53,17 +85,10 @@ router.post('/', (req, res) => {
                     message: "Serial number already exist"
                 });
             else {
+                var { serialNumber, goosh, helka, address, tags } = req.body;
+                var createdBy = assignedUser = req.user.id;
                 const project = new Project({
-                    serialNumber: req.body.serialNumber,
-                    createdBy: req.session.passport.id,
-                    goosh: req.body.goosh,
-                    helka: req.body.helka,
-                    address: {
-                        city: req.body.address.city,
-                        streetName: req.body.address.streetName,
-                        houseNumber: req.body.address.houseNumber,
-                        zip: req.body.address.zip
-                    }
+                    serialNumber, goosh, helka, address, tags, createdBy, assignedUser
                 });
                 return project.save();
             }
@@ -82,7 +107,6 @@ router.post('/', (req, res) => {
         });
 });
 
-/* Edit Project */
 
 /* update manual edit for a single project*/
 router.put("/:projectId/timings/:timingId", function (req, res, next) {
@@ -99,5 +123,11 @@ router.put("/:projectId/timings/:timingId", function (req, res, next) {
             console.log(res);
         })
 });
+
+/* Timings route */
+router.use('/:projectId/statuses', function (req, res, next) {
+    req.projectId = req.params.projectId;
+    next();
+}, statusesRouter);
 
 module.exports = router;

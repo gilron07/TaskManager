@@ -1,66 +1,45 @@
 var express = require('express');
 var router = express.Router();
 var passport = require('passport');
-require('../server/db');
 
 var User = require('../server/models/user');
+var { removeEmpty } = require('../server/utils');
+var { isAdmin } = require('../server/middlewares');
 
-// check user logged in middleware
-function isLoggedIn(req, res, next) {
-  if (req.isAuthenticated())
-      return next();
-
-  console.log("No premission");
-  res.redirect('/login');
-}
-// check if user is   admin middleware
-function isAdmin(req, res, next){
-  console.log()
-  if (req.user && req.user.is_admin)
-    return next();
-  res.redirect('/login');
-}
 
 /* GET users listing. */
-router.get('/',isAdmin, (req, res) => {
+router.get('/', isAdmin, (req, res) => {
   console.log(req.session.passport);
   User.find({}).then((result) => {
-    res.send(result);
+    res.status(200).json({
+      count: result.length,
+      users: result
+    });
   });
 });
 
-/* Signup for new user*
- and passport authentication*/
+/* Signup for new user */
 router.post('/signup', (req, res) => {
   User.find({ username: req.body.username })
     .then(user => {
-      if (user.length != 0) {
+      if (user.length > 0) {
         return res.status(409).json({
           message: "This username already exists"
         });
       }
       else {
+        var { username, firstname, lastname, password } = req.body;
         const user = new User({
-          username: req.body.username,
-          firstname: req.body.firstname,
-          lastname: req.body.lastname,
-          password: req.body.password,
-          is_admin: req.body.is_admin
+          username, firstname, lastname, password
         });
-        user.save()
-          .then(result => {
-            console.log(result);
-            return res.status(201).json({
-              message: "User successfully created"
-            });
-          })
-          .catch(err => {
-            console.log(err);
-            res.status(500).json({
-              error: err
-            });
-          });
+        return user.save();
       }
+    })
+    .then(result => {
+      console.log(result);
+      return res.status(201).json({
+        message: "User successfully created"
+      });
     })
     .catch(err => {
       console.log(err);
@@ -102,20 +81,15 @@ router.post('/login', passport.authenticate('local'), (req, res) => {
     });
 });
 
-// router.post('/login', passport.authenticate('local', {
-//   successRedirect: '/',
-//   failureRedirect: '/login'
-// }));
-
 
 
 /* user delete */
-router.delete('/:userId', (req, res) => {
+router.delete('/:userId', isAdmin, (req, res) => {
   // not the best practice, doesn't go through middleware
   User.findByIdAndRemove(req.params.userId)
     .then(result => {
       if (!result) {
-        return res.status(501).json({
+        return res.status(404).json({
           message: "User not found"
         });
       }
@@ -133,28 +107,29 @@ router.delete('/:userId', (req, res) => {
 });
 
 /* update user data */
-router.put('/:userId', (req, res) => {
+router.put('/:userId', isAdmin, (req, res) => {
   User.findById(req.params.userId)
     .then(user => {
       if (!user)
         return res.status(400).json({
-          message : "User not found"
+          message: "User not found"
         });
-
-      user.username = req.body.username ? req.body.username : user.name;
-      user.firstname = req.body.firstname ? req.body.firstname : user.firstname;
-      user.lastname = req.body.lastname ? req.body.lastname : user.lastname;
-      user.is_admin = req.body.is_admin ? req.body.is_admin : user.is_admin;
-
+      
+      //remove empty fields
+      removeEmpty(req.body);
+      delete req.body.is_admin;
+      Object.assign(user, req.body);
       return user.save();
     })
     .then(() => {
-        return res.status(204).send();
+      return res.status(200).json({
+        message: "User was successfully updated"
+      });
     })
     .catch(err => {
       console.log(err);
       return res.status(500).json({
-        message: err.message
+        message: err
       });
     })
 });
