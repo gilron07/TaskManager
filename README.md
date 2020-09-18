@@ -1,5 +1,5 @@
 # TaskManager
 
-TaskManager serverside app
+TaskManager serverside app using node js (express) and mongodb.
 
 
